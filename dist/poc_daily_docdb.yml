@@ -1,0 +1,215 @@
+resources:
+  jobs:
+    poc_daily_docdb:
+      name: poc_daily_docdb
+      webhook_notifications:
+        on_success:
+        - id: ${NOTIFICATION_ID_01}
+        on_failure:
+        - id: ${NOTIFICATION_ID_01}
+      schedule:
+        quartz_cron_expression: 9 0 6 * * ?
+        timezone_id: Asia/Taipei
+        pause_status: UNPAUSED
+      tasks:
+      - task_key: resource_claim-crcalertlog
+        spark_python_task:
+          python_file: /Workspace/service_principal/etl/cdip-databricks-wfs-proj-cathay-risk-center/src/util/dummy_resource_claimer.py
+        job_cluster_key: crcalertlog_cluster
+        max_retries: 30
+        min_retry_interval_millis: 120000
+      - task_key: cdip-bch-crcalertlog
+        depends_on:
+        - task_key: resource_claim-crcalertlog
+        spark_jar_task:
+          jar_uri: ""
+          main_class_name: cdip.bch.crcalertlog.Main
+          parameters:
+          - '{"ENV":"{{job.parameters.env}}"}'
+          run_as_repl: true
+        job_cluster_key: crcalertlog_cluster
+        libraries:
+        - jar: /Volumes/cdip_catalog/proj_cathay_risk_center/apps/cdip-bch-crcalertlog.jar
+        min_retry_interval_millis: 900000
+        health:
+          rules:
+          - metric: RUN_DURATION_SECONDS
+            op: GREATER_THAN
+            value: 7200
+        webhook_notifications:
+          on_duration_warning_threshold_exceeded:
+          - id: ${NOTIFICATION_ID_01}
+      - task_key: resource_claim-crncifcontact
+        spark_python_task:
+          python_file: /Workspace/service_principal/etl/cdip-databricks-wfs-proj-cathay-risk-center/src/util/dummy_resource_claimer.py
+        job_cluster_key: crncifcontact_cluster
+        max_retries: 30
+        min_retry_interval_millis: 120000
+      - task_key: cdip-bch-crncifcontact
+        depends_on:
+        - task_key: resource_claim-crncifcontact
+        spark_jar_task:
+          jar_uri: ""
+          main_class_name: cdip.bch.crncifcontact.Main
+          parameters:
+          - '{"ENV":"{{job.parameters.env}}"}'
+          run_as_repl: true
+        job_cluster_key: crncifcontact_cluster
+        libraries:
+        - jar: /Volumes/cdip_catalog/proj_cathay_risk_center/apps/cdip-bch-crncifcontact.jar
+        min_retry_interval_millis: 900000
+        health:
+          rules:
+          - metric: RUN_DURATION_SECONDS
+            op: GREATER_THAN
+            value: 7200
+        webhook_notifications:
+          on_duration_warning_threshold_exceeded:
+          - id: ${NOTIFICATION_ID_01}
+      - task_key: resource_claim-crncifinfo
+        spark_python_task:
+          python_file: /Workspace/service_principal/etl/cdip-databricks-wfs-proj-cathay-risk-center/src/util/dummy_resource_claimer.py
+        job_cluster_key: cdip-bch-crncifinfo_cluster
+        max_retries: 30
+        min_retry_interval_millis: 120000
+      - task_key: cdip-bch-crncifinfo
+        depends_on:
+        - task_key: resource_claim-crncifinfo
+        spark_jar_task:
+          jar_uri: ""
+          main_class_name: cdip.bch.crncifinfo.CrncifinfoApplication
+          parameters:
+          - '{"ENV":"{{job.parameters.env}}"}'
+          run_as_repl: true
+        job_cluster_key: cdip-bch-crncifinfo_cluster
+        libraries:
+        - jar: /Volumes/cdip_catalog/proj_cathay_risk_center/apps/cdip-bch-crncifinfo.jar
+        min_retry_interval_millis: 900000
+        health:
+          rules:
+          - metric: RUN_DURATION_SECONDS
+            op: GREATER_THAN
+            value: 7200
+        webhook_notifications:
+          on_duration_warning_threshold_exceeded:
+          - id: ${NOTIFICATION_ID_01}
+      - task_key: resource_claim-checkbchstatus
+        depends_on:
+        - task_key: cdip-bch-crncifcontact
+        - task_key: cdip-bch-crncifinfo
+        spark_python_task:
+          python_file: /Workspace/service_principal/etl/cdip-databricks-wfs-proj-cathay-risk-center/src/util/dummy_resource_claimer.py
+        job_cluster_key: cdip-svc-checkbchstatus_cluster
+        max_retries: 30
+        min_retry_interval_millis: 120000
+      - task_key: cdip-svc-checkbchstatus
+        depends_on:
+        - task_key: resource_claim-checkbchstatus
+        spark_jar_task:
+          jar_uri: ""
+          main_class_name: cdip.svc.checkbchstatus.CheckBchStatusApplication
+          parameters:
+          - '{"ENV":"{{job.parameters.env}}"}'
+          run_as_repl: true
+        job_cluster_key: cdip-svc-checkbchstatus_cluster
+        libraries:
+        - jar: /Volumes/cdip_catalog/proj_cathay_risk_center/apps/cdip-svc-checkbchstatus.jar
+        min_retry_interval_millis: 900000
+      job_clusters:
+      - job_cluster_key: cdip-bch-crncifinfo_cluster
+        new_cluster:
+          cluster_name: ""
+          spark_version: 16.3.x-scala2.12
+          spark_conf:
+            spark.master: local[*, 4]
+            spark.databricks.cluster.profile: singleNode
+            spark.default.parallelism: "10"
+            spark.sql.shuffle.partitions: "10"
+            spark.serializer: org.apache.spark.serializer.KryoSerializer
+            spark.sql.session.timeZone: UTC
+          aws_attributes:
+            instance_profile_arn: arn:aws:iam::${CDIP_AWS_ACCOUNT_ID}:instance-profile/cdip-databricks-instance-profile
+          custom_tags:
+            ResourceClass: SingleNode
+          cluster_log_conf:
+            volumes:
+              destination: /Volumes/cdip_catalog/log_cathay_risk_center/app_logs
+          instance_pool_id: ${INSTANCE_POOL_ID_01}
+          driver_instance_pool_id: ${INSTANCE_POOL_ID_01}
+          data_security_mode: SINGLE_USER
+          runtime_engine: STANDARD
+          num_workers: 0
+      - job_cluster_key: cdip-svc-checkbchstatus_cluster
+        new_cluster:
+          cluster_name: ""
+          spark_version: 16.3.x-scala2.12
+          spark_conf:
+            spark.master: local[*, 4]
+            spark.databricks.cluster.profile: singleNode
+            spark.default.parallelism: "10"
+            spark.sql.shuffle.partitions: "10"
+            spark.serializer: org.apache.spark.serializer.KryoSerializer
+            spark.sql.session.timeZone: UTC
+          aws_attributes:
+            instance_profile_arn: arn:aws:iam::${CDIP_AWS_ACCOUNT_ID}:instance-profile/cdip-databricks-instance-profile
+          custom_tags:
+            ResourceClass: SingleNode
+          cluster_log_conf:
+            volumes:
+              destination: /Volumes/cdip_catalog/log_cathay_risk_center/app_logs
+          instance_pool_id: ${INSTANCE_POOL_ID_01}
+          driver_instance_pool_id: ${INSTANCE_POOL_ID_01}
+          data_security_mode: SINGLE_USER
+          runtime_engine: STANDARD
+          num_workers: 0
+      - job_cluster_key: crcalertlog_cluster
+        new_cluster:
+          cluster_name: ""
+          spark_version: 16.3.x-scala2.12
+          spark_conf:
+            spark.master: local[*, 4]
+            spark.databricks.cluster.profile: singleNode
+            spark.default.parallelism: "10"
+            spark.sql.shuffle.partitions: "10"
+            spark.serializer: org.apache.spark.serializer.KryoSerializer
+            spark.sql.session.timeZone: UTC
+          aws_attributes:
+            instance_profile_arn: arn:aws:iam::${CDIP_AWS_ACCOUNT_ID}:instance-profile/cdip-databricks-instance-profile
+          custom_tags:
+            ResourceClass: SingleNode
+          cluster_log_conf:
+            volumes:
+              destination: /Volumes/cdip_catalog/log_cathay_risk_center/app_logs
+          instance_pool_id: ${INSTANCE_POOL_ID_01}
+          driver_instance_pool_id: ${INSTANCE_POOL_ID_01}
+          data_security_mode: SINGLE_USER
+          runtime_engine: STANDARD
+          num_workers: 0
+      - job_cluster_key: crncifcontact_cluster
+        new_cluster:
+          cluster_name: ""
+          spark_version: 16.3.x-scala2.12
+          spark_conf:
+            spark.master: local[*, 4]
+            spark.databricks.cluster.profile: singleNode
+            spark.default.parallelism: "10"
+            spark.sql.shuffle.partitions: "10"
+            spark.serializer: org.apache.spark.serializer.KryoSerializer
+            spark.sql.session.timeZone: UTC
+          aws_attributes:
+            instance_profile_arn: arn:aws:iam::${CDIP_AWS_ACCOUNT_ID}:instance-profile/cdip-databricks-instance-profile
+          custom_tags:
+            ResourceClass: SingleNode
+          cluster_log_conf:
+            volumes:
+              destination: /Volumes/cdip_catalog/log_cathay_risk_center/app_logs
+          instance_pool_id: ${INSTANCE_POOL_ID_01}
+          driver_instance_pool_id: ${INSTANCE_POOL_ID_01}
+          data_security_mode: SINGLE_USER
+          runtime_engine: STANDARD
+          num_workers: 0
+      queue:
+        enabled: true
+      parameters:
+      - name: env
+        default: ${ENV}
